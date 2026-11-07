@@ -126,6 +126,9 @@ class Terminal {
                 case 'metadata':
                     await this.handleMetadata(args);
                     break;
+                case 'related':
+                    await this.handleRelated(args);
+                    break;
                 case 'pwd':
                     this.print(process.cwd(), 'info');
                     break;
@@ -157,8 +160,10 @@ Available Commands:
   help                    Show this help message
   ls [category]           List files by category
   access <filename>       Open a file in viewer
+  access <filename> render  Open markdown file with rendered HTML
   view <filename>         View file with rich rendering
   metadata <filename>     Show file metadata
+  related <filename>      Find related documents by concept similarity
   search <query>          Search files
   clear                   Clear the terminal
   cat <filename>          Display file contents
@@ -176,8 +181,10 @@ Categories:
 Examples:
   ls documents
   access README.md
+  access docs/planning/archterm_prd.md render
   view docs/planning/archterm_prd.md
   metadata go.mod
+  related cmd/archterm/main.go
   search "architecture"`;
         this.print(help, 'info');
     }
@@ -195,7 +202,9 @@ Examples:
                     data.files.forEach(file => {
                         const icon = this.getFileIcon(file);
                         const color = this.getFileColor(file);
-                        this.print(`  ${icon} ${file.name}${' '.repeat(Math.max(1, 30 - file.name.length))} [${file.category || 'N/A'}]`, color);
+                        const name = file.Name || file.name || 'unknown';
+                        const category = file.Category || file.category || 'N/A';
+                        this.print(`  ${icon} ${name}${' '.repeat(Math.max(1, 30 - name.length))} [${category}]`, color);
                     });
                 } else {
                     this.print('  No files found.', 'dim');
@@ -209,17 +218,25 @@ Examples:
 
     async handleAccess(args) {
         if (!args[0]) {
-            this.print('Usage: access <filename>', 'warning');
+            this.print('Usage: access <filename> [render]', 'warning');
             return;
         }
 
         const filename = args[0];
+        const renderMode = args.includes('render') || args.includes('--render');
         try {
-            const response = await fetch(`/api/files/${encodeURIComponent(filename)}`);
+            const url = renderMode
+                ? `/api/files/${encodeURIComponent(filename)}?render=true`
+                : `/api/files/${encodeURIComponent(filename)}`;
+            const response = await fetch(url);
             if (response.ok) {
                 const content = await response.text();
                 this.print(`\n--- ${filename} ---`, 'success');
-                this.print(content, 'info');
+                if (renderMode) {
+                    this.printRenderedHTML(content);
+                } else {
+                    this.print(content, 'info');
+                }
                 this.print('---', 'dim');
             } else {
                 this.print(`File not found: ${filename}`, 'error');
@@ -321,6 +338,48 @@ Status: ${file.status || 'active'}
         }
     }
 
+    async handleRelated(args) {
+        if (!args[0]) {
+            this.print('Usage: related <filename>', 'warning');
+            return;
+        }
+
+        const filename = args[0];
+        this.print(`\nFinding related documents for "${filename}"...`, 'info');
+
+        try {
+            const response = await fetch(`/api/related?doc=${encodeURIComponent(filename)}&max=10`);
+            if (!response.ok) {
+                this.print(`Error: Could not fetch related documents`, 'error');
+                return;
+            }
+
+            const data = await response.json();
+            const rels = data.relationships || [];
+            
+            this.print(`\nRelated documents for "${data.source}":`, 'success');
+            this.print('─'.repeat(50), 'dim');
+
+            if (rels.length === 0) {
+                this.print('  No related documents found.', 'dim');
+            } else {
+                this.print(`  Found ${rels.length} related document(s):\n`, 'info');
+                rels.forEach((rel, i) => {
+                    const strength = Math.round(rel.strength * 100);
+                    const conceptList = rel.shared_concepts?.slice(0, 5).join(', ') || 'N/A';
+                    const bar = '█'.repeat(Math.floor(strength / 10)) + '░'.repeat(10 - Math.floor(strength / 10));
+                    this.print(`  ${i + 1}. [${strength}%] ${rel.target_title}`, 'info');
+                    this.print(`     Path: ${rel.target_source}`, 'dim');
+                    this.print(`     Concepts: [${bar}] ${conceptList}`, 'dim');
+                });
+            }
+            this.print('');
+            this.print('Tip: Use "access <filename>" to view a related document.', 'warning');
+        } catch (error) {
+            this.print(`Related error: ${error.message}`, 'error');
+        }
+    }
+
     async handleCat(args) {
         if (!args[0]) {
             this.print('Usage: cat <filename>', 'warning');
@@ -418,13 +477,11 @@ Status: ${file.status || 'active'}
             return `<pre class="code-block"><code class="language-${lang || 'text'}">${this.escapeHtml(code.trim())}</code></pre>`;
         });
         
-        // Headers
-        html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
-        html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
-        html = headingRegex(/^### (.+)$/, '$1');
-        html = headingRegex(/^## (.+)$/, '$1');
-        html = headingRegex(/^### (.+)$/, '$1');
-        html = headingRegex('^(#{1,6})\\s(.+)$', 'h$1');
+        // Headers (fixed: removed broken headingRegex calls)
+        html = html.replace(/^(#{1,6})\s(.+)$/gm, (match, hashes, content) => {
+            const level = hashes.length;
+            return `<h${level}>${content}</h${level}>`;
+        });
         
         // Bold and italic
         html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
@@ -510,7 +567,8 @@ Status: ${file.status || 'active'}
     }
 
     getFileIcon(file) {
-        const ext = file.name.split('.').pop().toLowerCase();
+        const name = file.Name || file.name || '';
+        const ext = name.split('.').pop().toLowerCase();
         const icons = {
             pdf: '📄',
             md: '📝',
@@ -525,7 +583,8 @@ Status: ${file.status || 'active'}
     }
 
     getFileColor(file) {
-        const ext = file.name.split('.').pop().toLowerCase();
+        const name = file.Name || file.name || '';
+        const ext = name.split('.').pop().toLowerCase();
         const colors = {
             pdf: '#e06c75',
             md: '#61afef',
@@ -544,6 +603,14 @@ Status: ${file.status || 'active'}
         line.className = `output-line ${type}`;
         line.textContent = text;
         this.output.appendChild(line);
+        this.scrollToBottom();
+    }
+
+    printRenderedHTML(html) {
+        const container = document.createElement('div');
+        container.className = 'output-line rendered-html';
+        container.innerHTML = html;
+        this.output.appendChild(container);
         this.scrollToBottom();
     }
 

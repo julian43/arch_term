@@ -35,6 +35,8 @@ const (
 	CmdDate
 	// CmdExit represents the exit command
 	CmdExit
+	// CmdRelated represents the related command
+	CmdRelated
 )
 
 // Command represents a parsed command
@@ -89,6 +91,7 @@ func (p *Parser) registerBuiltin() {
 	p.commands["whoami"] = CmdWhoami
 	p.commands["date"] = CmdDate
 	p.commands["exit"] = CmdExit
+	p.commands["related"] = CmdRelated
 
 	// Register default handlers
 	p.handlers[CmdHelp] = p.handleHelp
@@ -102,6 +105,7 @@ func (p *Parser) registerBuiltin() {
 	p.handlers[CmdWhoami] = p.handleWhoami
 	p.handlers[CmdDate] = p.handleDate
 	p.handlers[CmdExit] = p.handleExit
+	p.handlers[CmdRelated] = p.handleRelated
 }
 
 // Parse parses a command string and returns a Command
@@ -231,6 +235,12 @@ func (p *Parser) GetHelpText(cmdType CommandType) *HelpText {
 			Description: "Exit the terminal",
 			Usage:       "exit",
 		}
+	case CmdRelated:
+		return &HelpText{
+			Command:     "related",
+			Description: "Find related documents by concept similarity",
+			Usage:       "related <filename>",
+		}
 	default:
 		return &HelpText{
 			Command:     "unknown",
@@ -254,6 +264,7 @@ func (p *Parser) GetHelpTexts() []HelpText {
 		{Command: "whoami", Description: "Display current user", Usage: "whoami"},
 		{Command: "date", Description: "Display current date/time", Usage: "date"},
 		{Command: "exit", Description: "Exit the terminal", Usage: "exit"},
+		{Command: "related <filename>", Description: "Find related documents", Usage: "related <filename>"},
 	}
 }
 
@@ -375,6 +386,21 @@ func (p *Parser) handleExit(args []string) *Result {
 	return &Result{
 		Success: true,
 		Message: "Exiting...",
+	}
+}
+
+func (p *Parser) handleRelated(args []string) *Result {
+	if len(args) == 0 {
+		return &Result{
+			Success: false,
+			Message: "Usage: related <filename>",
+		}
+	}
+	filename := args[0]
+	return &Result{
+		Success: true,
+		Message: fmt.Sprintf("Finding related documents for: %s", filename),
+		Data:    map[string]interface{}{"filename": filename},
 	}
 }
 

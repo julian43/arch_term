@@ -488,3 +488,120 @@ body {
         overflow: visible;
     }
 }
+
+/* Rendered Markdown Styles */
+.output-line.rendered-html {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 16px;
+    margin: 8px 0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+    font-size: 14px;
+    line-height: 1.7;
+    color: var(--text-primary);
+    white-space: normal;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+}
+
+.output-line.rendered-html h1,
+.output-line.rendered-html h2,
+.output-line.rendered-html h3,
+.output-line.rendered-html h4,
+.output-line.rendered-html h5,
+.output-line.rendered-html h6 {
+    color: var(--accent);
+    margin: 16px 0 8px 0;
+    font-family: var(--font-mono);
+}
+
+.output-line.rendered-html h1 { font-size: 1.6em; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+.output-line.rendered-html h2 { font-size: 1.4em; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+.output-line.rendered-html h3 { font-size: 1.2em; }
+
+.output-line.rendered-html p {
+    margin: 8px 0;
+}
+
+.output-line.rendered-html strong {
+    color: var(--accent);
+    font-weight: 700;
+}
+
+.output-line.rendered-html em {
+    color: #cccccc;
+    font-style: italic;
+}
+
+.output-line.rendered-html code {
+    background: #1a1a1a;
+    border: 1px solid #2a2a2a;
+    border-radius: 3px;
+    padding: 2px 6px;
+    font-family: var(--font-mono);
+    font-size: 0.9em;
+    color: #e6c600;
+}
+
+.output-line.rendered-html pre {
+    background: #0d0d0d;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 12px;
+    overflow-x: auto;
+    margin: 12px 0;
+}
+
+.output-line.rendered-html pre code {
+    background: none;
+    border: none;
+    padding: 0;
+    color: var(--accent);
+}
+
+.output-line.rendered-html ul,
+.output-line.rendered-html ol {
+    margin: 8px 0;
+    padding-left: 24px;
+}
+
+.output-line.rendered-html li {
+    margin: 4px 0;
+}
+
+.output-line.rendered-html hr {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 16px 0;
+}
+
+.output-line.rendered-html blockquote {
+    border-left: 3px solid var(--accent-dim);
+    padding: 8px 16px;
+    margin: 8px 0;
+    background: rgba(0, 170, 42, 0.05);
+    color: var(--text-secondary);
+}
+
+.output-line.rendered-html a {
+    color: var(--accent);
+    text-decoration: underline;
+}
+
+.output-line.rendered-html a:hover {
+    color: var(--accent);
+    text-shadow: 0 0 5px var(--accent);
+}
+
+.output-line.rendered-html img {
+    max-width: 100%;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    margin: 8px 0;
+}
+
+.output-line.rendered-html del {
+    color: var(--text-secondary);
+    text-decoration: line-through;
+}
