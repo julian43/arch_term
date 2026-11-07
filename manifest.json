@@ -1,0 +1,38 @@
+{
+  "version": "1.0.0",
+  "name": "ArchTerm Manifest",
+  "description": "File categorization manifest for ArchTerm",
+  "categories": {
+    "documents": {
+      "label": "Documents",
+      "extensions": [".pdf", ".md", ".txt", ".doc", ".docx"],
+      "icon": "📄"
+    },
+    "code": {
+      "label": "Code",
+      "extensions": [".go", ".js", ".ts", ".py", ".rs", ".java"],
+      "icon": "🔧"
+    },
+    "config": {
+      "label": "Configuration",
+      "extensions": [".json", ".yaml", ".yml", ".toml", ".ini", ".cfg"],
+      "icon": "⚙️"
+    },
+    "images": {
+      "label": "Images",
+      "extensions": [".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico"],
+      "icon": "🖼️"
+    },
+    "data": {
+      "label": "Data Files",
+      "extensions": [".csv", ".xml", ".sql", ".db"],
+      "icon": "📊"
+    },
+    "other": {
+      "label": "Other",
+      "extensions": [],
+      "icon": "📎"
+    }
+  },
+  "files": []
+}

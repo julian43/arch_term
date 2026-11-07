@@ -1,0 +1,52 @@
+# Binary
+*.exe
+*.exe~
+*.dll
+*.so
+*.a
+*.lib
+*.out
+*.app
+*.o
+*.pyc
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Go
+_/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.dist-info/
+.eggs/
+*.egg-info/
+*.egg
+dist/
+build/
+*.whl
+
+# Node
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Dependencies
+vendor/
+
+# Logs
+*.log
+logs/
+
+# Temporary
+tmp/
+temp/
