@@ -14,6 +14,7 @@ class Terminal {
         this.currentIndex = -1;
         this.isProcessing = false;
         this.currentViewer = null;
+        this.activeProject = null;
         
         this.init();
     }
@@ -46,8 +47,9 @@ class Terminal {
         this.print('Type "help" for available commands.', 'info');
         this.print('');
         
-        // Load manifest
+        // Load manifest and projects
         this.loadManifest();
+        this.loadProjects();
     }
 
     async loadManifest() {
@@ -61,6 +63,229 @@ class Terminal {
         } catch (error) {
             console.error('Failed to load manifest:', error);
             this.print('Warning: Could not load manifest', 'warning');
+        }
+    }
+
+    // ===== PROJECT FUNCTIONS =====
+
+    async loadProjects() {
+        try {
+            const response = await fetch('/api/projects');
+            if (response.ok) {
+                const data = await response.json();
+                this.activeProject = data.active;
+                this.updateProjectPrompt();
+                if (data.projects.length === 0) {
+                    this.print('No projects configured. Use "project create <name> <path1> [path2...]" to create one.', 'warning');
+                } else {
+                    this.print(`Projects loaded: ${data.projects.length} configured, "${data.active?.name || 'none'}" active`, 'info');
+                }
+            }
+        } catch (error) {
+            console.error('Failed to load projects:', error);
+        }
+    }
+
+    updateProjectPrompt() {
+        const titleEl = document.querySelector('.terminal-header .title');
+        if (titleEl) {
+            const projectPrefix = this.activeProject ? `[${this.activeProject}] ` : '';
+            titleEl.textContent = `archterm@architect: ~ ${projectPrefix}`;
+        }
+    }
+
+    async handleProjectCommand(args) {
+        const cmd = args[0]?.toLowerCase();
+        const rest = args.slice(1);
+
+        switch (cmd) {
+            case 'list':
+            case 'ls':
+                await this.listProjects();
+                break;
+            case 'create':
+            case 'new':
+                await this.createProject(rest);
+                break;
+            case 'delete':
+            case 'del':
+                await this.deleteProject(rest);
+                break;
+            case 'use':
+            case 'activate':
+                await this.activateProject(rest);
+                break;
+            case 'update':
+            case 'set':
+                await this.updateProjectPaths(rest);
+                break;
+            case 'scan':
+                await this.scanProject(rest);
+                break;
+            case 'current':
+            case 'active':
+                this.showActiveProject();
+                break;
+            default:
+                this.print('Unknown project command. Use: list, create, delete, use, update, scan, current', 'warning');
+        }
+    }
+
+    async listProjects() {
+        try {
+            const response = await fetch('/api/projects');
+            if (!response.ok) return;
+            const data = await response.json();
+            const projects = data.projects || [];
+
+            this.print('\nConfigured Projects:', 'success');
+            this.print('─'.repeat(50), 'dim');
+
+            if (projects.length === 0) {
+                this.print('  No projects configured.', 'dim');
+            } else {
+                projects.forEach(p => {
+                    const marker = p.name === data.active?.name ? ' ▶ ' : '   ';
+                    const paths = (p.paths || p.Paths || []).join(', ');
+                    this.print(`${marker}[${p.name}] (${paths})`, p.name === data.active?.name ? 'success' : 'info');
+                });
+            }
+            this.print('');
+        } catch (error) {
+            this.print(`Error listing projects: ${error.message}`, 'error');
+        }
+    }
+
+    async createProject(args) {
+        if (args.length < 2) {
+            this.print('Usage: project create <name> <path1> [path2 ...]', 'warning');
+            return;
+        }
+        const name = args[0];
+        const paths = args.slice(1);
+
+        try {
+            const response = await fetch('/api/projects', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, paths })
+            });
+            const data = await response.json();
+            if (response.ok) {
+                this.print(`Project "${name}" created with ${paths.length} path(s)`, 'success');
+                this.loadProjects();
+            } else {
+                this.print(`Error: ${data.message || 'Failed to create project'}`, 'error');
+            }
+        } catch (error) {
+            this.print(`Error: ${error.message}`, 'error');
+        }
+    }
+
+    async deleteProject(args) {
+        if (args.length < 1) {
+            this.print('Usage: project delete <name>', 'warning');
+            return;
+        }
+        const name = args[0];
+
+        if (!confirm(`Delete project "${name}"?`)) {
+            this.print('Cancelled.', 'info');
+            return;
+        }
+
+        try {
+            const response = await fetch(`/api/projects/${name}`, { method: 'DELETE' });
+            const data = await response.json();
+            if (response.ok) {
+                this.print(`Project "${name}" deleted`, 'success');
+                if (this.activeProject === name) {
+                    this.activeProject = null;
+                    this.updateProjectPrompt();
+                }
+            } else {
+                this.print(`Error: ${data.message || 'Failed to delete project'}`, 'error');
+            }
+        } catch (error) {
+            this.print(`Error: ${error.message}`, 'error');
+        }
+    }
+
+    async activateProject(args) {
+        if (args.length < 1) {
+            this.print('Usage: project use <name>', 'warning');
+            return;
+        }
+        const name = args[0];
+
+        try {
+            const response = await fetch(`/api/projects/${name}/activate`, { method: 'POST' });
+            const data = await response.json();
+            if (response.ok) {
+                this.print(`Project "${name}" activated`, 'success');
+                this.activeProject = name;
+                this.updateProjectPrompt();
+            } else {
+                this.print(`Error: ${data.message || 'Failed to activate project'}`, 'error');
+            }
+        } catch (error) {
+            this.print(`Error: ${error.message}`, 'error');
+        }
+    }
+
+    async updateProjectPaths(args) {
+        if (args.length < 2) {
+            this.print('Usage: project update <name> <path1> [path2 ...]', 'warning');
+            return;
+        }
+        const name = args[0];
+        const paths = args.slice(1);
+
+        try {
+            const response = await fetch(`/api/projects/${name}/paths`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ paths })
+            });
+            const data = await response.json();
+            if (response.ok) {
+                this.print(`Project "${name}" paths updated`, 'success');
+            } else {
+                this.print(`Error: ${data.message || 'Failed to update paths'}`, 'error');
+            }
+        } catch (error) {
+            this.print(`Error: ${error.message}`, 'error');
+        }
+    }
+
+    async scanProject(args) {
+        const name = args[0];
+        if (!name) {
+            this.print('Usage: project scan <name>', 'warning');
+            return;
+        }
+
+        this.print(`Scanning project "${name}"...`, 'info');
+
+        try {
+            const response = await fetch(`/api/projects/${name}/scan`, { method: 'POST' });
+            const data = await response.json();
+            if (response.ok) {
+                this.print(`Scanned ${data.count} files in project "${data.project}"`, 'success');
+            } else {
+                this.print(`Error: ${data.message || 'Failed to scan project'}`, 'error');
+            }
+        } catch (error) {
+            this.print(`Error: ${error.message}`, 'error');
+        }
+    }
+
+    showActiveProject() {
+        const active = this.activeProject;
+        if (active) {
+            this.print(`Active project: ${active}`, 'info');
+        } else {
+            this.print('No active project. Use "project use <name>" to activate one.', 'warning');
         }
     }
 
@@ -141,6 +366,9 @@ class Terminal {
                 case 'exit':
                     window.close();
                     break;
+                case 'project':
+                    await this.handleProjectCommand(args);
+                    break;
                 default:
                     this.print(`Unknown command: ${cmd}`, 'error');
                     this.print('Type "help" for available commands.', 'warning');
@@ -165,12 +393,22 @@ Available Commands:
   metadata <filename>     Show file metadata
   related <filename>      Find related documents by concept similarity
   search <query>          Search files
+  project <subcommand>    Manage projects (list, create, use, delete, update, scan, current)
   clear                   Clear the terminal
   cat <filename>          Display file contents
   pwd                     Print working directory
   whoami                  Display current user
   date                    Display current date/time
   exit                    Exit the terminal
+
+Project Subcommands:
+  project list            List all projects
+  project create <name> <paths...>  Create a new project
+  project use <name>      Activate a project
+  project delete <name>   Delete a project
+  project update <name> <paths...>  Update project paths
+  project scan <name>     Scan project files
+  project current         Show active project
 
 Categories:
   documents    Document files (.pdf, .md, .txt)
@@ -185,7 +423,9 @@ Examples:
   view docs/planning/archterm_prd.md
   metadata go.mod
   related cmd/archterm/main.go
-  search "architecture"`;
+  search "architecture"
+  project create myproject ~/src/myproject ~/docs
+  project use myproject`;
         this.print(help, 'info');
     }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -13,6 +14,7 @@ import (
 
 	"archterm/internal/config"
 	"archterm/internal/markdown"
+	"archterm/internal/project"
 	"archterm/internal/search"
 )
 
@@ -21,6 +23,7 @@ type Server struct {
 	port     int
 	manifest *config.Manifest
 	searcher *search.SemanticSearcher
+	projMgr  *project.Manager
 	mux      *http.ServeMux
 	srv      *http.Server
 }
@@ -30,10 +33,24 @@ func NewServer(port int, m *config.Manifest) *Server {
 	// Create semantic search indexer
 	searcher := search.NewSemanticSearcher()
 
+	// Create project manager
+	projMgr, err := project.NewManager()
+	if err != nil {
+		log.Printf("Warning: Could not load project store: %v", err)
+		// Create empty store
+		emptyStore := &config.ProjectStore{
+			Projects: []config.Project{},
+			Active:   "",
+		}
+		projMgr = &project.Manager{}
+		_ = emptyStore
+	}
+
 	s := &Server{
 		port:     port,
 		manifest: m,
 		searcher: searcher,
+		projMgr:  projMgr,
 		mux:      http.NewServeMux(),
 	}
 
@@ -93,6 +110,10 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/api/search", s.handleSearch)
 	s.mux.HandleFunc("/api/related", s.handleRelated)
 	s.mux.HandleFunc("/api/concepts", s.handleConcepts)
+
+	// Project routes
+	s.mux.HandleFunc("/api/projects", s.handleProjects)
+	s.mux.HandleFunc("/api/projects/", s.handleProjectAction)
 
 	// Serve static files
 	s.mux.HandleFunc("/", s.handleStatic)
@@ -265,5 +286,190 @@ func (s *Server) handleConcepts(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"source":   docID,
 		"concepts": concepts,
+	})
+}
+
+// Project handlers
+
+func (s *Server) handleProjects(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		s.listProjects(w, r)
+	case http.MethodPost:
+		s.createProject(w, r)
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func (s *Server) handleProjectAction(w http.ResponseWriter, r *http.Request) {
+	path := strings.TrimPrefix(r.URL.Path, "/api/projects/")
+	parts := strings.Split(path, "/")
+
+	if len(parts) < 1 || parts[0] == "" {
+		http.Error(w, "Missing project name", http.StatusBadRequest)
+		return
+	}
+
+	projectName := parts[0]
+	action := ""
+	if len(parts) > 1 {
+		action = parts[1]
+	}
+
+	switch action {
+	case "activate":
+		if r.Method == http.MethodPost {
+			s.activateProject(w, r, projectName)
+		} else {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	case "paths":
+		if r.Method == http.MethodPut {
+			s.updateProjectPaths(w, r, projectName)
+		} else {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	case "scan":
+		if r.Method == http.MethodPost {
+			s.scanProject(w, r, projectName)
+		} else {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	default:
+		if r.Method == http.MethodDelete {
+			s.deleteProject(w, r, projectName)
+		} else {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	}
+}
+
+func (s *Server) listProjects(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+
+	projects := s.projMgr.List()
+	active := s.projMgr.GetActive()
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"projects": projects,
+		"active":   active,
+	})
+}
+
+func (s *Server) createProject(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Name  string   `json:"name"`
+		Paths []string `json:"paths"`
+	}
+
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Failed to read request body", http.StatusBadRequest)
+		return
+	}
+	defer r.Body.Close()
+
+	if err := json.Unmarshal(body, &req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if req.Name == "" {
+		http.Error(w, "Project name is required", http.StatusBadRequest)
+		return
+	}
+
+	if len(req.Paths) == 0 {
+		http.Error(w, "At least one path is required", http.StatusBadRequest)
+		return
+	}
+
+	if err := s.projMgr.Create(req.Name, req.Paths); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(map[string]string{
+		"message": fmt.Sprintf("Project '%s' created successfully", req.Name),
+	})
+}
+
+func (s *Server) activateProject(w http.ResponseWriter, r *http.Request, name string) {
+	if err := s.projMgr.Activate(name); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{
+		"message": fmt.Sprintf("Project '%s' activated", name),
+	})
+}
+
+func (s *Server) updateProjectPaths(w http.ResponseWriter, r *http.Request, name string) {
+	var req struct {
+		Paths []string `json:"paths"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+	defer r.Body.Close()
+
+	if len(req.Paths) == 0 {
+		http.Error(w, "At least one path is required", http.StatusBadRequest)
+		return
+	}
+
+	if err := s.projMgr.UpdatePaths(name, req.Paths); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{
+		"message": fmt.Sprintf("Project '%s' paths updated", name),
+	})
+}
+
+func (s *Server) scanProject(w http.ResponseWriter, r *http.Request, name string) {
+	proj := s.projMgr.Get(name)
+	if proj == nil {
+		http.Error(w, "Project not found", http.StatusNotFound)
+		return
+	}
+
+	entries, err := project.ScanPaths(proj.Paths)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"project": name,
+		"files":   entries,
+		"count":   len(entries),
+	})
+}
+
+func (s *Server) deleteProject(w http.ResponseWriter, r *http.Request, name string) {
+	if err := s.projMgr.Delete(name); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{
+		"message": fmt.Sprintf("Project '%s' deleted", name),
 	})
 }
