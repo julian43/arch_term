@@ -7,12 +7,14 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"archterm/internal/config"
+	"archterm/internal/filehandler"
 	"archterm/internal/markdown"
 	"archterm/internal/project"
 	"archterm/internal/search"
@@ -161,23 +163,73 @@ func (s *Server) manifestResponse(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleFiles(w http.ResponseWriter, r *http.Request) {
-	path := strings.TrimPrefix(r.URL.Path, "/api/files/")
-	if path == "" {
+	filename := strings.TrimPrefix(r.URL.Path, "/api/files/")
+	if filename == "" {
 		http.Error(w, "Missing file path", http.StatusBadRequest)
 		return
 	}
 
-	// Read the file
-	data, err := os.ReadFile(filepath.Join(".", path))
+	// URL decode the filename
+	filename, _ = url.PathUnescape(filename)
+
+	// First, try to find the file in the manifest (for project files)
+	// Search by filename only (handles spaces in filenames)
+	targetFile := ""
+	for _, f := range s.manifest.Files {
+		if f.Name == filename || filepath.Base(f.Path) == filename {
+			targetFile = f.Path
+			break
+		}
+	}
+
+	var data []byte
+	var err error
+	if targetFile != "" {
+		// Use the absolute path from the manifest
+		data, err = os.ReadFile(targetFile)
+	} else {
+		// Fall back to relative path from working directory
+		data, err = os.ReadFile(filepath.Join(".", filename))
+	}
 	if err != nil {
 		http.Error(w, "File not found", http.StatusNotFound)
 		return
 	}
 
+	// Check if text extraction is requested (for PDF, RTF files)
+	extract := r.URL.Query().Get("extract")
+	if extract == "true" || extract == "1" {
+		ext := strings.ToLower(filepath.Ext(filename))
+		if ext == ".pdf" || ext == ".rtf" {
+			// Use filehandler to extract text
+			fh := filehandler.NewHandler()
+			content, err := fh.ReadFile(filename)
+			if err == nil && content.Content != "" {
+				w.Header().Set("Content-Type", "application/json")
+				resp := map[string]interface{}{
+					"filename": content.FileName,
+					"content":  content.Content,
+					"fileType": content.ContentType,
+				}
+				json.NewEncoder(w).Encode(resp)
+				return
+			}
+			// If extraction failed, return error response
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			resp := map[string]interface{}{
+				"filename": content.FileName,
+				"error":    content.ErrorMessage,
+			}
+			json.NewEncoder(w).Encode(resp)
+			return
+		}
+	}
+
 	// Check if rendered output is requested
 	render := r.URL.Query().Get("render")
 	if render == "true" || render == "1" {
-		ext := strings.ToLower(filepath.Ext(path))
+		ext := strings.ToLower(filepath.Ext(filename))
 		if ext == ".md" || ext == ".markdown" {
 			renderer := markdown.NewRenderer()
 			html := renderer.Render(string(data))
@@ -187,8 +239,38 @@ func (s *Server) handleFiles(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Determine content type based on file extension
+	ext := strings.ToLower(filepath.Ext(filename))
+	contentType := "application/octet-stream" // default for binary files
+	switch ext {
+	case ".pdf":
+		contentType = "application/pdf"
+	case ".rtf":
+		contentType = "application/rtf"
+	case ".txt", ".text":
+		contentType = "text/plain"
+	case ".html", ".htm":
+		contentType = "text/html"
+	case ".css":
+		contentType = "text/css"
+	case ".js":
+		contentType = "application/javascript"
+	case ".json":
+		contentType = "application/json"
+	case ".png":
+		contentType = "image/png"
+	case ".jpg", ".jpeg":
+		contentType = "image/jpeg"
+	case ".gif":
+		contentType = "image/gif"
+	case ".svg":
+		contentType = "image/svg+xml"
+	case ".md", ".markdown":
+		contentType = "text/markdown"
+	}
+
 	// Return the file content
-	w.Header().Set("Content-Type", "text/plain")
+	w.Header().Set("Content-Type", contentType)
 	w.Write(data)
 }
 
@@ -404,6 +486,11 @@ func (s *Server) activateProject(w http.ResponseWriter, r *http.Request, name st
 		return
 	}
 
+	// Refresh manifest with active project's files
+	if err := s.projMgr.RefreshManifest(s.manifest); err != nil {
+		log.Printf("Warning: Failed to refresh manifest: %v", err)
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]string{
@@ -430,6 +517,11 @@ func (s *Server) updateProjectPaths(w http.ResponseWriter, r *http.Request, name
 	if err := s.projMgr.UpdatePaths(name, req.Paths); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
+	}
+
+	// Refresh manifest with updated paths
+	if err := s.projMgr.RefreshManifest(s.manifest); err != nil {
+		log.Printf("Warning: Failed to refresh manifest: %v", err)
 	}
 
 	w.Header().Set("Content-Type", "application/json")

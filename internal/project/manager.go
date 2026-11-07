@@ -62,6 +62,20 @@ func (m *Manager) Activate(name string) error {
 	return m.store.ActivateProject(name)
 }
 
+// RefreshManifest scans the active project's paths and updates the manifest
+func (m *Manager) RefreshManifest(manifest *config.Manifest) error {
+	paths := m.store.GetActivePaths()
+	if len(paths) == 0 {
+		return fmt.Errorf("no active project")
+	}
+	entries, err := ScanPaths(paths)
+	if err != nil {
+		return err
+	}
+	manifest.Files = entries
+	return nil
+}
+
 // UpdatePaths updates the paths of an existing project
 func (m *Manager) UpdatePaths(name string, paths []string) error {
 	// Validate paths exist
@@ -135,13 +149,9 @@ func ScanPaths(paths []string) ([]config.ManifestEntry, error) {
 			if category == "" {
 				category = "other"
 			}
-			relPath, err := filepath.Rel(absPath, filePath)
-			if err != nil {
-				relPath = filePath
-			}
 			entries = append(entries, config.ManifestEntry{
 				Name:     info.Name(),
-				Path:     relPath,
+				Path:     filePath,
 				Category: category,
 				Metadata: map[string]string{
 					"size":         fmt.Sprintf("%d", info.Size()),

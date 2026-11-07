@@ -1,6 +1,7 @@
 package command
 
 import (
+	"archterm/internal/filehandler"
 	"fmt"
 	"strings"
 	"sync"
@@ -298,14 +299,47 @@ func (p *Parser) handleAccess(args []string) *Result {
 	if len(args) == 0 {
 		return &Result{
 			Success: false,
-			Message: "Usage: access <filename>",
+			Message: "Usage: access <filename> [render]",
 		}
 	}
 	filename := args[0]
+	render := false
+	if len(args) > 1 && strings.ToLower(args[1]) == "render" {
+		render = true
+	}
+
+	// Use filehandler to read the file
+	handler := filehandler.NewHandler()
+	content, err := handler.ReadFile(filename)
+	if err != nil {
+		return &Result{
+			Success: false,
+			Message: fmt.Sprintf("Error reading file: %s", content.ErrorMessage),
+			Data: map[string]interface{}{
+				"filename": content.FileName,
+				"content":  content.Content,
+				"error":    content.ErrorMessage,
+				"fileType": content.ContentType,
+				"render":   render,
+			},
+		}
+	}
+
+	// For markdown files with render flag, return render hint
+	fileType := filehandler.DetectFileType(filename)
+	if fileType == filehandler.FileTypeMarkdown && render {
+		render = true
+	}
+
 	return &Result{
 		Success: true,
-		Message: fmt.Sprintf("Opening file: %s", filename),
-		Data:    map[string]interface{}{"filename": filename},
+		Message: fmt.Sprintf("Opened file: %s (type: %s)", content.FileName, content.ContentType),
+		Data: map[string]interface{}{
+			"filename": content.FileName,
+			"content":  content.Content,
+			"fileType": content.ContentType,
+			"render":   render,
+		},
 	}
 }
 

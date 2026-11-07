@@ -464,12 +464,48 @@ Examples:
 
         const filename = args[0];
         const renderMode = args.includes('render') || args.includes('--render');
+        const ext = this.getFileExtension(filename).toLowerCase();
+        const isExtractable = ['pdf', 'rtf'].includes(ext);
+        
         try {
-            const url = renderMode
-                ? `/api/files/${encodeURIComponent(filename)}?render=true`
-                : `/api/files/${encodeURIComponent(filename)}`;
+            let url = `/api/files/${encodeURIComponent(filename)}`;
+            if (isExtractable) {
+                url += '?extract=true';
+            }
             const response = await fetch(url);
             if (response.ok) {
+                const contentType = response.headers.get('content-type') || '';
+                const ext = this.getFileExtension(filename).toLowerCase();
+                
+                // Check if server returns extracted text content (for PDF/RTF)
+                if (contentType.includes('application/json')) {
+                    const data = await response.json();
+                    if (data.error) {
+                        this.print(`\n--- ${data.filename || filename} ---`, 'warning');
+                        this.print(`Error: ${data.error}`, 'error');
+                        this.print('---', 'dim');
+                        return;
+                    }
+                    if (data.content) {
+                        this.print(`\n--- ${data.filename || filename} (type: ${data.fileType || 'text'}) ---`, 'success');
+                        this.print(data.content, 'info');
+                        this.print('---', 'dim');
+                        return;
+                    }
+                }
+                
+                // Handle binary files (PDF, RTF, etc.) by opening in new tab
+                if (contentType.includes('application/pdf') || contentType.includes('application/rtf') || contentType.includes('application/octet-stream')) {
+                    this.print(`\n--- ${filename} ---`, 'success');
+                    this.print(`File type: ${contentType}`, 'info');
+                    this.print('Opening in new tab...', 'info');
+                    const blob = await response.blob();
+                    const blobUrl = URL.createObjectURL(blob);
+                    window.open(blobUrl, '_blank');
+                    this.print('---', 'dim');
+                    return;
+                }
+                
                 const content = await response.text();
                 this.print(`\n--- ${filename} ---`, 'success');
                 if (renderMode) {
