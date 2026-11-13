@@ -22,6 +22,24 @@ const (
 	FileTypeUnknown
 )
 
+// String returns the string representation of the file type.
+func (ft FileType) String() string {
+	switch ft {
+	case FileTypePDF:
+		return "application/pdf"
+	case FileTypeRTF:
+		return "application/rtf"
+	case FileTypeText:
+		return "text/plain"
+	case FileTypeMarkdown:
+		return "text/markdown"
+	case FileTypeUnknown:
+		return "application/octet-stream"
+	default:
+		return "application/octet-stream"
+	}
+}
+
 // FileContent represents the extracted content from a file
 type FileContent struct {
 	FileName     string
@@ -146,7 +164,7 @@ func (h *Handler) ReadFile(path string) (*FileContent, error) {
 	if err != nil {
 		return &FileContent{
 			FileName:     filepath.Base(path),
-			ContentType:  string(fileType),
+			ContentType:  fileType.String(),
 			Content:      "",
 			ErrorMessage: fmt.Sprintf("Error reading %s: %v", path, err),
 		}, err

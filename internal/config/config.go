@@ -56,6 +56,13 @@ type ProjectStore struct {
 	Active   string    `json:"active"`
 }
 
+// NetworkConfig holds network-related configuration
+type NetworkConfig struct {
+	BindAddr string // "host:port" or ":port" for all interfaces
+	Port     int    // shortcut: port only, bind addr derived
+	ShowInfo bool   // print Tailscale IP on startup
+}
+
 // DefaultProjectStorePath returns the default path for the project store
 func DefaultProjectStorePath() string {
 	home, err := os.UserHomeDir()
@@ -95,7 +102,6 @@ func (s *ProjectStore) SaveProjectStore(path string) error {
 
 // AddProject adds a new project to the store
 func (s *ProjectStore) AddProject(name string, paths []string) error {
-	// Check if project already exists
 	for _, p := range s.Projects {
 		if p.Name == name {
 			return fmt.Errorf("project %s already exists", name)

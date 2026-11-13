@@ -62,6 +62,7 @@ ArchTerm is a high-performance, terminal-based file browser and document viewer 
 - Go 1.21 or higher
 - Python 3.8+ (optional, for document parsing)
 - Modern web browser (Chrome, Firefox, Edge, Safari)
+- **[Tailscale](https://tailscale.com)** (optional, for network access)
 
 ### Quick Start
 
@@ -89,6 +90,90 @@ ArchTerm is a high-performance, terminal-based file browser and document viewer 
 
 5. **Open your browser**
    Navigate to `http://localhost:8080`
+
+## Network & Tailscale Usage
+
+ArchTerm now supports running over a **Tailscale network**, allowing you to access projects from any machine on your Tailnet.
+
+### How It Works
+
+When ArchTerm runs on a machine connected to Tailscale, it:
+1. **Detects the Tailscale IP** (in the `100.64.0.0/10` range)
+2. **Binds to all network interfaces** by default, making it accessible from other Tailnet machines
+3. **Displays a startup banner** with the Tailscale IP and access URL
+
+### Running on Tailscale
+
+**Standard mode** (accessible from Tailscale network):
+```bash
+./archterm -port 8080
+```
+or with Makefile:
+```bash
+make net-run
+```
+
+When Tailscale is detected, you'll see a banner like:
+```
+╔══════════════════════════════════════════════════════════╗
+║                   ArchTerm Network Info                   ║
+╠══════════════════════════════════════════════════════════╣
+║                                                           ║
+║  🦉 Tailscale IP: 100.107.45.123                        ║
+║  🌐 Access URL:    http://100.107.45.123:8080                    ║
+║                                                           ║
+║  Local interfaces:                                       ║
+║    - 192.168.1.100                                       ║
+║    - 10.0.0.5                                            ║
+║                                                           ║
+╚══════════════════════════════════════════════════════════╝
+```
+
+Other machines on your Tailnet can then access this instance at:
+```
+http://100.107.45.123:8080
+```
+
+**Localhost only** (not accessible from network):
+```bash
+./archterm -port 8080 -bind 127.0.0.1:8080
+```
+or with Makefile:
+```bash
+make net-local
+```
+
+**Custom bind address:**
+```bash
+./archterm -port 9090 -bind 10.0.0.5:9090
+./archterm -bind :9090
+```
+
+### Multi-Machine Setup
+
+To browse projects across your Tailnet:
+
+1. **Install Tailscale** on all machines you want to share projects from
+2. **Run ArchTerm** on each machine with a unique port:
+   ```bash
+   # Machine A
+   ./archterm -port 8080
+   
+   # Machine B  
+   ./archterm -port 8081
+   ```
+3. **Access each instance** from your browser via its Tailscale IP
+4. **Create projects** with paths on each machine - ArchTerm indexes files on the machine where it's running
+
+### Command-Line Flags
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `-port` | `8080` | Port to listen on |
+| `-bind` | `:8080` | Address to bind. Examples: `:9090` (all interfaces), `127.0.0.1:9090` (localhost only), `10.0.0.5:9090` (specific interface) |
+| `-banner` | `true` | Show network info banner on startup. Set to `false` to suppress. |
+| `-config` | `manifest.json` | Path to manifest file |
+| `-manifest` | (same as `-config`) | Path to manifest file (overrides `-config`) |
 
 ## Usage
 

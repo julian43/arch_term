@@ -18,7 +18,8 @@ NC=\033[0m
         py-install py-test \
         web-build web-dev \
         docs \
-        dev-setup
+        dev-setup \
+        net-run net-local net-banner
 
 all: build
 
@@ -129,6 +130,26 @@ dev-setup: mod-tidy py-install
 	@echo "$(YELLOW)  Run 'make help' for more commands$(NC)"
 	@echo ""
 
+# Network targets (Tailscale-ready)
+# Run on all interfaces — accessible from other machines on the same Tailscale network
+net-run: build
+	@echo "$(BLUE)[ArchTerm]$(NC) Starting server on all interfaces (Tailscale-ready)..."
+	@echo "$(BLUE)$(NC) This machine is reachable over Tailscale!"
+	./$(BINARY_NAME) -port 8080 -banner
+
+# Run on localhost only (no network exposure)
+net-local: build
+	@echo "$(BLUE)[ArchTerm]$(NC) Starting server on localhost only (127.0.0.1)..."
+	./$(BINARY_NAME) -port 8080 -bind 127.0.0.1:8080 -banner
+
+# Just show the network info banner without starting the server
+net-banner:
+	@echo "$(BLUE)[ArchTerm]$(NC) Checking Tailscale connectivity..."
+	./$(BINARY_NAME) -port 8080 -banner=false 2>/dev/null || true
+	@echo ""
+	@echo "To see the banner, run: make net-run"
+	@echo ""
+
 # Show help
 help:
 	@echo ""
@@ -157,6 +178,8 @@ help:
 	@echo "  make dev-setup - Full development environment setup"
 	@echo "  make install   - Install to GOPATH"
 	@echo ""
-	@echo "$(BLUE)Other:$(NC)"
-	@echo "  make help      - Show this help"
+	@echo "$(BLUE)Network:$(NC)"
+	@echo "  make net-run   - Run on all interfaces (Tailscale-ready)"
+	@echo "  make net-local - Run on localhost only (no network exposure)"
+	@echo "  make net-banner - Show network info banner"
 	@echo ""

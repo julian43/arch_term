@@ -6,11 +6,14 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
 	"archterm/internal/config"
 	"archterm/internal/filesystem"
+	"archterm/internal/network"
 	"archterm/internal/server"
 )
 
@@ -20,7 +23,8 @@ func main() {
 	// Parse command-line flags
 	_ = flag.String("config", "manifest.json", "Path to manifest file")
 	port := flag.Int("port", 8080, "Port to listen on")
-	_ = flag.String("manifest", "", "Path to manifest file (overrides default)")
+	bindAddr := flag.String("bind", "", `Address to bind to (e.g., ":8080" for all interfaces, "127.0.0.1:8080" for localhost only). Default: all interfaces.`)
+	showBanner := flag.Bool("banner", true, "Show Tailscale/network info banner on startup")
 	flag.Parse()
 
 	// Create manifest
@@ -36,12 +40,33 @@ func main() {
 		}
 	}()
 
+	// Print network startup banner
+	if *showBanner {
+		network.PrintStartupBanner(*port)
+	}
+
+	// Determine bind address
+	var addr string
+	if *bindAddr != "" {
+		// User specified a bind address
+		addr = *bindAddr
+		// If there's no port, prepend one
+		if !strings.Contains(addr, ":") {
+			addr = addr + ":" + strconv.Itoa(*port)
+		}
+	} else {
+		// Default: bind to all interfaces (works for Tailscale)
+		addr = ":" + strconv.Itoa(*port)
+	}
+
+	log.Printf("Binding to: %s", addr)
+
 	// Create HTTP server
 	srv := server.NewServer(*port, manifest)
 
-	// Create HTTP server
+	// Start the server
 	go func() {
-		if err := srv.Start(); err != nil {
+		if err := srv.Start(addr); err != nil {
 			log.Printf("Server error: %v", err)
 		}
 	}()

@@ -172,6 +172,35 @@ make dev
 
 ---
 
+### PHASE V: NETWORK EXTENSION (Tailscale) — ✅ IN PROGRESS
+
+| # | Task ID | Description | Status |
+|---|---------|-------------|--------|
+| 27 | `NET-001` | Create `internal/network` package for interface detection | ✅ Complete |
+| 28 | `NET-002` | Detect Tailscale IPs from `100.64.0.0/10` range | ✅ Complete |
+| 29 | `NET-003` | Add `-bind` CLI flag for flexible network binding | ✅ Complete |
+| 30 | `NET-004` | Add `-banner` CLI flag to show Tailscale network info | ✅ Complete |
+| 31 | `NET-005` | Print startup banner with Tailscale IP and access URL | ✅ Complete |
+| 32 | `NET-006` | Add Makefile targets: `net-run`, `net-local` | ✅ Complete |
+| 33 | `NET-007` | Update README with network documentation | ✅ Complete |
+
+**Phase V Summary:** 7 tasks | **Completed:** 7/7 | **Progress:** ████████████ 100%
+
+---
+
+## 📊 Overall Progress Tracker
+
+| Phase | Tasks | Completed | Progress |
+|-------|-------|-----------|----------|
+| I. Foundation | 8 | 8 | 100% |
+| II. Command Interface | 8 | 8 | 100% |
+| III. Viewing Buffer | 5 | 5 | 100% |
+| IV. Intelligence | 5 | 5 | 100% |
+| V. Network Extension | 7 | 7 | 100% |
+| **TOTAL** | **33** | **33** | **100%** |
+
+---
+
 ## 📝 Notes
 
 - **Strict Policy:** Only files directly relevant to development should be opened/modified. No extraneous files.
@@ -182,4 +211,4 @@ make dev
 ---
 
 *Document maintained by: Architect's Codex Development Team*  
-*Last updated: 2026-11-07*
+*Last updated: 2026-11-12*

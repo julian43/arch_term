@@ -17,9 +17,10 @@
 9. [API Development](#api-development)
 10. [Frontend Development](#frontend-development)
 11. [Configuration](#configuration)
-12. [Deployment](#deployment)
-13. [Troubleshooting](#troubleshooting)
-14. [Release Process](#release-process)
+12. [Network & Tailscale](#network--tailscale)
+13. [Deployment](#deployment)
+14. [Troubleshooting](#troubleshooting)
+15. [Release Process](#release-process)
 
 ---
 
@@ -135,6 +136,7 @@ pip3 install -r python_parser/requirements.txt
 | **Command Parser** | `internal/command` | Terminal command parsing |
 | **LLM Providers** | `internal/llm` | LLM provider interfaces |
 | **Ollama Client** | `internal/ollama` | Ollama API integration |
+| **Network Detector** | `internal/network` | Tailscale detection, network info, startup banner |
 
 ---
 
@@ -160,8 +162,10 @@ internal/
 │   └── (empty)            # Reserved for document parsers
 ├── search/
 │   └── semantic.go        # TF-IDF search engine
-└── server/
-    └── server.go          # HTTP server and API handlers
+├── server/
+│   └── server.go          # HTTP server and API handlers
+└── network/
+    └── detector.go        # Tailscale detection, network info, startup banner
 cmd/
 └── archterm/
     └── main.go            # Application entry point
@@ -582,8 +586,24 @@ The server is configured via command-line flags in [`cmd/archterm/main.go`](cmd/
 | Flag | Default | Description |
 |------|---------|-------------|
 | `-port` | `8080` | Port to listen on |
+| `-bind` | `:8080` | Address to bind. Default is `:port` (all interfaces). Examples: `127.0.0.1:9090` (localhost only), `:9090` (all interfaces) |
+| `-banner` | `true` | Show network info banner on startup (includes Tailscale IP). Set to `false` to suppress. |
 | `-config` | `manifest.json` | Path to manifest file |
 | `-manifest` | (empty) | Override manifest path |
+
+### Network Configuration
+
+The network layer is implemented in [`internal/network/detector.go`](internal/network/detector.go) and uses Go's standard library only.
+
+**Key components:**
+
+- `GetNetworkInfo()` — Enumerates all network interfaces and detects Tailscale IPs (in the `100.64.0.0/10` range)
+- `GetTailscaleIP()` — Returns the first Tailscale IP, or empty string if not connected
+- `GetTailscaleIPs()` — Returns all Tailscale IPs
+- `BuildAccessURL(port)` — Constructs a URL for remote access (returns empty string if no Tailscale)
+- `PrintStartupBanner(port)` — Prints a formatted banner with Tailscale IP and local interfaces
+
+**Tailscale detection** works by checking all IP addresses on all active network interfaces against the Tailscale subnet allocator CIDR (`100.64.0.0/10`). If any IP falls within this range, the machine is considered to be on a Tailnet.
 
 ### Watched Directories
 
@@ -613,6 +633,100 @@ categoryMap: map[string]string{
     // ... etc
 }
 ```
+
+---
+
+## Network & Tailscale
+
+### Architecture
+
+The network layer (`internal/network/detector.go`) uses only Go standard library:
+
+```go
+package network
+
+import (
+	"fmt"
+	"net"
+	"sort"
+	"strings"
+)
+```
+
+No external network libraries, no Tailscale SDK dependency. It simply scans network interfaces for IPs in the Tailscale range (`100.64.0.0/10`).
+
+### Startup Banner System
+
+The startup banner is printed during server initialization in [`cmd/archterm/main.go`](cmd/archterm/main.go):
+
+```go
+// Print network startup banner
+if *showBanner {
+	network.PrintStartupBanner(*port)
+}
+```
+
+The banner displays:
+- Tailscale IP (if detected)
+- Access URL for remote clients
+- Local network interfaces (first 3 non-loopback)
+- A warning if no Tailscale is detected
+
+### Binding Behavior
+
+By default, the server binds to all interfaces (`:port`). This is intentional — it makes ArchTerm immediately accessible on the Tailscale network without any configuration.
+
+To restrict to localhost only:
+```bash
+./archterm -bind 127.0.0.1:8080
+```
+
+To bind to a specific interface:
+```bash
+./archterm -bind 192.168.1.100:8080
+```
+
+### Multi-Instance Setup
+
+To run ArchTerm on multiple machines and browse each from one browser:
+
+1. **Install Tailscale** on all machines
+2. **Run ArchTerm on each** with a unique port:
+   ```bash
+   # Machine A (port 8080)
+   ./archterm -port 8080
+   
+   # Machine B (port 8081)
+   ./archterm -port 8081
+   ```
+3. **Access each** from your browser at the Tailscale URL shown in each instance's banner
+4. **Create projects** — ArchTerm indexes files on the machine where it runs
+
+### Testing Network Functionality
+
+```bash
+# Test: default (all interfaces, banner on)
+./archterm -port 8080
+
+# Test: localhost only (no network exposure)
+./archterm -port 8080 -bind 127.0.0.1:8080
+
+# Test: custom port on all interfaces
+./archterm -port 9090 -bind :9090
+
+# Test: show banner without running server (quick check)
+./archterm -port 8080 -banner 2>&1 &
+sleep 2 && kill $! 2>/dev/null
+```
+
+Verify the output shows the Tailscale IP and access URL. If no Tailscale is detected, the banner will show a warning message instead.
+
+### Makefile Targets
+
+| Target | Description |
+|--------|-------------|
+| `make net-run` | Build and run on all interfaces (Tailscale-ready) |
+| `make net-local` | Build and run on localhost only (no network exposure) |
 
 ---
 
@@ -872,7 +986,7 @@ Data structures:
 HTTP server:
 - `Server` — HTTP server struct
 - `NewServer()` — Constructor
-- `Start()` — Start listening
+- `Start(addr)` — Start listening on the given address. The address format is `":port"` (all interfaces) or `"host:port"` (specific interface). Default when called is `:port`.
 - `Shutdown()` — Graceful shutdown
 - `handleStatic()` — Serve web assets
 - `handleManifest()` — `/api/manifest`
@@ -909,3 +1023,12 @@ Markdown renderer:
 - `Renderer` — Markdown renderer
 - `NewRenderer()` — Constructor
 - `Render()` — Convert markdown to HTML
+
+### `archterm/internal/network`
+
+Network detection and banner:
+- `GetNetworkInfo()` — Enumerate interfaces and detect Tailscale IPs
+- `GetTailscaleIP()` — Return first Tailscale IP (or empty string)
+- `GetTailscaleIPs()` — Return all Tailscale IPs
+- `BuildAccessURL(port)` — Construct remote access URL
+- `PrintStartupBanner(port)` — Print formatted startup banner

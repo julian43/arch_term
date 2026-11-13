@@ -87,10 +87,10 @@ func NewServer(port int, m *config.Manifest) *Server {
 }
 
 // Start begins serving HTTP requests
-func (s *Server) Start() error {
-	log.Printf("Starting server on port %d...", s.port)
+func (s *Server) Start(addr string) error {
+	log.Printf("Starting server on %s...", addr)
 	s.srv = &http.Server{
-		Addr:         fmt.Sprintf(":%d", s.port),
+		Addr:         addr,
 		Handler:      s.mux,
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 30 * time.Second,
